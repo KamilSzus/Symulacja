@@ -1,36 +1,43 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
 namespace Symulacja
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
         public ObservableCollection<ClientInfo> Clients { get; set; }
+        public ObservableCollection<FileInfo>[] Folders { get; set; }
+
         private ConcurrentQueue<ClientInfo> processingQueue;
         private SemaphoreSlim semaphore;
         private CancellationTokenSource cancellationTokenSource;
-        private int maxConcurrentFiles;
         private int nextClientID;
 
         public MainWindow()
         {
             InitializeComponent();
             Clients = new ObservableCollection<ClientInfo>();
+            Folders = new ObservableCollection<FileInfo>[5]
+            {
+                new ObservableCollection<FileInfo>(),
+                new ObservableCollection<FileInfo>(),
+                new ObservableCollection<FileInfo>(),
+                new ObservableCollection<FileInfo>(),
+                new ObservableCollection<FileInfo>()
+            };
+
             processingQueue = new ConcurrentQueue<ClientInfo>();
-            DataContext = this;
-
-            // Set maximum concurrent files
-            maxConcurrentFiles = 3; // Example value, adjust as needed
-            semaphore = new SemaphoreSlim(maxConcurrentFiles);
-
-            // Initialize next client ID
+            semaphore = new SemaphoreSlim(5); // One thread per folder
             nextClientID = 1;
+
+            DataContext = this;
         }
 
         private async void StartSimulation(object sender, RoutedEventArgs e)
@@ -43,8 +50,10 @@ namespace Symulacja
                 client.Priority = CalculatePriority(client);
             }
 
-            _ = Task.Run(() => UpdatePrioritiesAsync(cancellationTokenSource.Token));
-            await ProcessQueueAsync(cancellationTokenSource.Token);
+            var updateTask = UpdatePrioritiesAsync(cancellationTokenSource.Token);
+            var processingTasks = Enumerable.Range(0, 5).Select(index => ProcessFolderAsync(index, cancellationTokenSource.Token)).ToArray();
+
+            await Task.WhenAll(updateTask, Task.WhenAll(processingTasks));
         }
 
         private void StopSimulation(object sender, RoutedEventArgs e)
@@ -52,87 +61,82 @@ namespace Symulacja
             cancellationTokenSource?.Cancel();
         }
 
-        private void AddFile(object sender, RoutedEventArgs e)
+        private async void AddCustomFile(object sender, RoutedEventArgs e)
         {
-            var newFile = new ClientInfo
+            int customFileSize;
+
+            if (string.IsNullOrEmpty(FileSizeTextBox.Text) || !int.TryParse(FileSizeTextBox.Text, out customFileSize) || customFileSize <= 0)
+            {
+                Random random = new Random();
+                customFileSize = random.Next(1, 100000); // Random file size between 1 and 100000 MB
+            }
+
+            var customFile = new ClientInfo
             {
                 ClientID = nextClientID++,
-                FileSizeMB = new Random().Next(10, 500),
+                FileSizeMB = customFileSize,
                 EntryTime = DateTime.Now,
                 Progress = 0
             };
 
-            newFile.Priority = CalculatePriority(newFile);
-            Clients.Add(newFile);
-            processingQueue.Enqueue(newFile);
+            customFile.Priority = CalculatePriority(customFile);
+            await Application.Current.Dispatcher.InvokeAsync(() => Clients.Add(customFile));
+            processingQueue.Enqueue(customFile);
         }
 
-        private void AddCustomFile(object sender, RoutedEventArgs e)
-        {
-            if (int.TryParse(FileSizeTextBox.Text, out int customFileSize) && customFileSize > 0)
-            {
-                var customFile = new ClientInfo
-                {
-                    ClientID = nextClientID++,
-                    FileSizeMB = customFileSize,
-                    EntryTime = DateTime.Now,
-                    Progress = 0
-                };
-
-                customFile.Priority = CalculatePriority(customFile);
-                Clients.Add(customFile);
-                processingQueue.Enqueue(customFile);
-            }
-            else if (string.IsNullOrEmpty(FileSizeTextBox.Text))
-            {
-                Random r = new Random(DateTime.Now.Microsecond);
-                int rInt = r.Next(1, 100000);
-
-                var customFile = new ClientInfo
-                {
-                    ClientID = nextClientID++,
-                    FileSizeMB = rInt,
-                    EntryTime = DateTime.Now,
-                    Progress = 0
-                };
-
-                customFile.Priority = CalculatePriority(customFile);
-                Clients.Add(customFile);
-                processingQueue.Enqueue(customFile);
-            }
-            else
-            {
-                MessageBox.Show("Please enter a valid file size (positive integer).", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-
-        private async Task ProcessQueueAsync(CancellationToken token)
+        private async Task ProcessFolderAsync(int folderIndex, CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                var nextClient = GetNextClientByPriority();
-
-                if (nextClient == null)
-                {
-                    await Task.Delay(100, token); // Wait for new files
-                    continue;
-                }
-
                 await semaphore.WaitAsync(token);
 
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    var nextClient = GetNextClientByPriority();
+                    if (nextClient != null)
                     {
-                        await ProcessClientAsync(nextClient, token);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }, token);
+                        var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.FileSizeMB} MB" };
 
-                await Task.Delay(100, token); // Throttle to reduce UI contention
+                        // Add file to the folder
+                        await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Add(fileInfo));
+
+                        // Process the file
+                        while (nextClient.Progress < 100 && !token.IsCancellationRequested)
+                        {
+                            await Task.Delay(100, token);
+                            nextClient.Progress += CalculateIncrement(nextClient.FileSizeMB);
+
+                            if (nextClient.Progress > 100)
+                                nextClient.Progress = 100;
+                        }
+
+                        // Remove file from folder after processing
+                        await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Remove(fileInfo));
+
+                        // Remove client from the queue and UI
+                        await Application.Current.Dispatcher.InvokeAsync(() => Clients.Remove(nextClient));
+                    }
+                    else
+                    {
+                        await Task.Delay(100, token); // Prevent tight loop
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }
+        }
+
+        private async Task UpdatePrioritiesAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                foreach (var client in Clients)
+                {
+                    client.Priority = CalculatePriority(client);
+                }
+                await Task.Delay(500, token); // Update priorities every 500ms
             }
         }
 
@@ -153,41 +157,10 @@ namespace Symulacja
             return null;
         }
 
-        private async Task ProcessClientAsync(ClientInfo client, CancellationToken token)
-        {
-            while (client.Progress < 100 && !token.IsCancellationRequested)
-            {
-                await Task.Delay(100, token); // Simulate work
-
-                client.Progress += CalculateIncrement(client.FileSizeMB);
-                if (client.Progress > 100)
-                {
-                    client.Progress = 100;
-                }
-            }
-
-            if (client.Progress >= 100)
-            {
-                Application.Current.Dispatcher.Invoke(() => Clients.Remove(client));
-            }
-        }
-
-        private async Task UpdatePrioritiesAsync(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested)
-            {
-                foreach (var client in Clients)
-                {
-                    client.Priority = CalculatePriority(client);
-                }
-                await Task.Delay(500, token); // Update priorities every 500ms
-            }
-        }
-
         private double CalculatePriority(ClientInfo client)
         {
-            // Formula: log base queue length (time in queue) + (queue length / file size)
-            int queueLength = Math.Max(processingQueue.Count, 1); // Avoid division by zero
+            // Priority formula: log(base queue length)(time in queue) + (queue length / file size)
+            int queueLength = Math.Max(processingQueue.Count + 1, 1); // Avoid division by zero
             double timeInQueue = Math.Max((DateTime.Now - client.EntryTime).TotalSeconds, 1);
             double logPart = Math.Log(timeInQueue, queueLength);
             double sizePart = (double)queueLength / client.FileSizeMB;
@@ -196,8 +169,12 @@ namespace Symulacja
 
         private int CalculateIncrement(int fileSize)
         {
-            // Example formula: Progress increment based on file size
-            return Math.Max(1, 500 / fileSize); // Adjust constants as needed
+            return Math.Max(1, 500 / fileSize);
+        }
+
+        private void DataGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+
         }
     }
 
@@ -242,5 +219,32 @@ namespace Symulacja
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+    }
+
+    public class FileInfo //: INotifyPropertyChanged
+    {
+      //  private int _progress;
+
+        public string FileName { get; set; }
+     //   public int Progress
+     //   {
+     //       get => _progress;
+     //       set
+     //       {
+     //           if (_progress != value)
+     //           {
+     //               _progress = value;
+     //               OnPropertyChanged(nameof(Progress));
+     //           }
+     //       }
+     //   }
+
+     // //  public event PropertyChangedEventHandler PropertyChanged;
+     //
+     //   protected void OnPropertyChanged(string propertyName)
+     //   {
+     //       PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+     //   }
+
     }
 }
