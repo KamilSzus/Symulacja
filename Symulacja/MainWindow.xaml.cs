@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,11 +57,6 @@ namespace Symulacja
             await Task.WhenAll(updateTask, Task.WhenAll(processingTasks));
         }
 
-        private void StopSimulation(object sender, RoutedEventArgs e)
-        {
-            cancellationTokenSource?.Cancel();
-        }
-
         private async void AddCustomFile(object sender, RoutedEventArgs e)
         {
             int customFileSize;
@@ -74,11 +70,11 @@ namespace Symulacja
             var customFile = new ClientInfo
             {
                 ClientID = nextClientID++,
-                FileSizeMB = customFileSize,
+                FileSizeMB = new() { customFileSize , 10, 1000},
                 EntryTime = DateTime.Now,
                 Progress = 0
             };
-
+            customFile.FileSizeMB = new ObservableCollection<int>(customFile.FileSizeMB.OrderBy(file => file));
             customFile.Priority = CalculatePriority(customFile);
             await Application.Current.Dispatcher.InvokeAsync(() => Clients.Add(customFile));
             processingQueue.Enqueue(customFile);
@@ -95,30 +91,55 @@ namespace Symulacja
                     var nextClient = GetNextClientByPriority();
                     if (nextClient != null)
                     {
-                        var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.FileSizeMB} MB" };
+                        var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.FileSizeMB[0]} MB" };
 
-                        // Add file to the folder
+                        // Dodaj plik do folderu
                         await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Add(fileInfo));
 
-                        // Process the file
+                        // Przetwarzanie pliku
                         while (nextClient.Progress < 100 && !token.IsCancellationRequested)
                         {
                             await Task.Delay(100, token);
-                            nextClient.Progress += CalculateIncrement(nextClient.FileSizeMB);
+                            var increment = CalculateIncrement(nextClient.FileSizeMB[0]);
+                            nextClient.Progress = Math.Min(nextClient.Progress + increment, 100);
+                            fileInfo.Progress = Math.Min(fileInfo.Progress + increment, 100);
 
-                            if (nextClient.Progress > 100)
-                                nextClient.Progress = 100;
+                            // Aktualizuj postęp klienta w interfejsie
+                            await Application.Current.Dispatcher.InvokeAsync(() =>
+                            {
+                                nextClient.OnPropertyChanged(nameof(nextClient.Progress));
+                            });
                         }
 
-                        // Remove file from folder after processing
+                        // Usuń plik z folderu po przetworzeniu
                         await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Remove(fileInfo));
 
-                        // Remove client from the queue and UI
-                        await Application.Current.Dispatcher.InvokeAsync(() => Clients.Remove(nextClient));
+                        // Usuń pierwszy plik z listy FileSizeMB
+                        await Application.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            if (nextClient.FileSizeMB.Count > 0)
+                            {
+                                nextClient.FileSizeMB.RemoveAt(0);
+                                nextClient.OnPropertyChanged(nameof(nextClient.FileSizeMB));
+                            }
+
+                            // Jeśli klient ma więcej plików, oblicz priorytet i dodaj go z powrotem do kolejki
+                            if (nextClient.FileSizeMB.Count > 0)
+                            {
+                                nextClient.Progress = 0;
+                                nextClient.EntryTime = DateTime.Now;
+                                nextClient.Priority = CalculatePriority(nextClient);
+                                processingQueue.Enqueue(nextClient);
+                            }
+                            else
+                            {
+                                Application.Current.Dispatcher.InvokeAsync(() => Clients.Remove(nextClient));
+                            }
+                        });
                     }
                     else
                     {
-                        await Task.Delay(100, token); // Prevent tight loop
+                        await Task.Delay(100, token); // Zapobiega intensywnemu pętlowaniu
                     }
                 }
                 finally
@@ -127,6 +148,7 @@ namespace Symulacja
                 }
             }
         }
+
 
         private async Task UpdatePrioritiesAsync(CancellationToken token)
         {
@@ -163,7 +185,7 @@ namespace Symulacja
             int queueLength = Math.Max(processingQueue.Count + 1, 1); // Avoid division by zero
             double timeInQueue = Math.Max((DateTime.Now - client.EntryTime).TotalSeconds, 1);
             double logPart = Math.Log(timeInQueue, queueLength);
-            double sizePart = (double)queueLength / client.FileSizeMB;
+            double sizePart = (double)queueLength / client.FileSizeMB[0];
             return logPart + sizePart;
         }
 
@@ -182,11 +204,23 @@ namespace Symulacja
     {
         private int _progress;
         private double _priority;
+        private ObservableCollection<int> _fileSizeMB = new();
 
         public int ClientID { get; set; }
-        public int FileSizeMB { get; set; }
         public DateTime EntryTime { get; set; }
 
+        public ObservableCollection<int> FileSizeMB
+        {
+            get => _fileSizeMB;
+            set
+            {
+                if (_fileSizeMB != value)
+                {
+                    _fileSizeMB = value;
+                    OnPropertyChanged(nameof(FileSizeMB));
+                }
+            }
+        }
         public int Progress
         {
             get => _progress;
@@ -215,36 +249,36 @@ namespace Symulacja
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected void OnPropertyChanged(string propertyName)
+        public void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 
-    public class FileInfo //: INotifyPropertyChanged
+    public class FileInfo : INotifyPropertyChanged
     {
-      //  private int _progress;
+        private int _progress;
 
         public string FileName { get; set; }
-     //   public int Progress
-     //   {
-     //       get => _progress;
-     //       set
-     //       {
-     //           if (_progress != value)
-     //           {
-     //               _progress = value;
-     //               OnPropertyChanged(nameof(Progress));
-     //           }
-     //       }
-     //   }
+        public int Progress
+        {
+            get => _progress;
+            set
+            {
+                if (_progress != value)
+                {
+                    _progress = value;
+                    OnPropertyChanged(nameof(Progress));
+                }
+            }
+        }
 
-     // //  public event PropertyChangedEventHandler PropertyChanged;
-     //
-     //   protected void OnPropertyChanged(string propertyName)
-     //   {
-     //       PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-     //   }
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
 
     }
 }
