@@ -25,17 +25,17 @@ namespace Symulacja
         {
             InitializeComponent();
             Clients = new ObservableCollection<ClientInfo>();
-            Folders = new ObservableCollection<FileInfo>[5]
-            {
+            Folders =
+            [
                 new ObservableCollection<FileInfo>(),
                 new ObservableCollection<FileInfo>(),
                 new ObservableCollection<FileInfo>(),
                 new ObservableCollection<FileInfo>(),
                 new ObservableCollection<FileInfo>()
-            };
+            ];
 
             processingQueue = new ConcurrentQueue<ClientInfo>();
-            semaphore = new SemaphoreSlim(5); // One thread per folder
+            semaphore = new SemaphoreSlim(5);
             nextClientID = 1;
 
             DataContext = this;
@@ -59,26 +59,34 @@ namespace Symulacja
 
         private async void AddCustomFile(object sender, RoutedEventArgs e)
         {
-            int customFileSize;
+            Random random = new Random();
 
-            if (string.IsNullOrEmpty(FileSizeTextBox.Text) || !int.TryParse(FileSizeTextBox.Text, out customFileSize) || customFileSize <= 0)
-            {
-                Random random = new Random();
-                customFileSize = random.Next(1, 100000); // Random file size between 1 and 100000 MB
-            }
+            int customFileSize = !string.IsNullOrEmpty(FileSizeTextBox.Text) && int.TryParse(FileSizeTextBox.Text, out int parsedSize) && parsedSize > 0
+                ? parsedSize
+                : random.Next(1, 100000);
+
+            int numberOfFiles = !string.IsNullOrEmpty(NumberOfFileTextBox.Text) && int.TryParse(NumberOfFileTextBox.Text, out int parsedCount) && parsedCount > 0
+                ? parsedCount
+                : random.Next(1, 4);
 
             var customFile = new ClientInfo
             {
                 ClientID = nextClientID++,
-                FileSizeMB = new() { customFileSize , 10, 1000},
+                ListOfClientFiles = new ObservableCollection<int>(
+                    Enumerable.Range(0, numberOfFiles - 1 ).Select(_ => random.Next(1, 100000))
+                ),
                 EntryTime = DateTime.Now,
                 Progress = 0
             };
-            customFile.FileSizeMB = new ObservableCollection<int>(customFile.FileSizeMB.OrderBy(file => file));
+
+            customFile.ListOfClientFiles.Add(customFileSize);
+            customFile.ListOfClientFiles = new ObservableCollection<int>(customFile.ListOfClientFiles.OrderBy(file => file));
             customFile.Priority = CalculatePriority(customFile);
+
             await Application.Current.Dispatcher.InvokeAsync(() => Clients.Add(customFile));
             processingQueue.Enqueue(customFile);
         }
+
 
         private async Task ProcessFolderAsync(int folderIndex, CancellationToken token)
         {
@@ -91,7 +99,7 @@ namespace Symulacja
                     var nextClient = GetNextClientByPriority();
                     if (nextClient != null)
                     {
-                        var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.FileSizeMB[0]} MB" };
+                        var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.ListOfClientFiles[0]} MB" };
 
                         // Dodaj plik do folderu
                         await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Add(fileInfo));
@@ -100,7 +108,7 @@ namespace Symulacja
                         while (nextClient.Progress < 100 && !token.IsCancellationRequested)
                         {
                             await Task.Delay(100, token);
-                            var increment = CalculateIncrement(nextClient.FileSizeMB[0]);
+                            var increment = CalculateIncrement(nextClient.ListOfClientFiles[0]);
                             nextClient.Progress = Math.Min(nextClient.Progress + increment, 100);
                             fileInfo.Progress = Math.Min(fileInfo.Progress + increment, 100);
 
@@ -117,14 +125,14 @@ namespace Symulacja
                         // Usuń pierwszy plik z listy FileSizeMB
                         await Application.Current.Dispatcher.InvokeAsync(() =>
                         {
-                            if (nextClient.FileSizeMB.Count > 0)
+                            if (nextClient.ListOfClientFiles.Count > 0)
                             {
-                                nextClient.FileSizeMB.RemoveAt(0);
-                                nextClient.OnPropertyChanged(nameof(nextClient.FileSizeMB));
+                                nextClient.ListOfClientFiles.RemoveAt(0);
+                                nextClient.OnPropertyChanged(nameof(nextClient.ListOfClientFiles));
                             }
 
                             // Jeśli klient ma więcej plików, oblicz priorytet i dodaj go z powrotem do kolejki
-                            if (nextClient.FileSizeMB.Count > 0)
+                            if (nextClient.ListOfClientFiles.Count > 0)
                             {
                                 nextClient.Progress = 0;
                                 nextClient.EntryTime = DateTime.Now;
@@ -185,7 +193,7 @@ namespace Symulacja
             int queueLength = Math.Max(processingQueue.Count + 1, 1); // Avoid division by zero
             double timeInQueue = Math.Max((DateTime.Now - client.EntryTime).TotalSeconds, 1);
             double logPart = Math.Log(timeInQueue, queueLength);
-            double sizePart = (double)queueLength / client.FileSizeMB[0];
+            double sizePart = (double)queueLength / client.ListOfClientFiles[0];
             return logPart + sizePart;
         }
 
@@ -204,20 +212,20 @@ namespace Symulacja
     {
         private int _progress;
         private double _priority;
-        private ObservableCollection<int> _fileSizeMB = new();
+        private ObservableCollection<int> _listOfClientFiles = new();
 
         public int ClientID { get; set; }
         public DateTime EntryTime { get; set; }
 
-        public ObservableCollection<int> FileSizeMB
+        public ObservableCollection<int> ListOfClientFiles
         {
-            get => _fileSizeMB;
+            get => _listOfClientFiles;
             set
             {
-                if (_fileSizeMB != value)
+                if (_listOfClientFiles != value)
                 {
-                    _fileSizeMB = value;
-                    OnPropertyChanged(nameof(FileSizeMB));
+                    _listOfClientFiles = value;
+                    OnPropertyChanged(nameof(ListOfClientFiles));
                 }
             }
         }

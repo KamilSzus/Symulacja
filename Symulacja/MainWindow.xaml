@@ -19,8 +19,10 @@
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" Grid.Row="0" Grid.ColumnSpan="2">
             <Button Content="Start Simulation" Click="StartSimulation" Width="150" Margin="5"/>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5">
-                <TextBlock Text="File Size (MB):" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <TextBox Name="FileSizeTextBox" Width="100"/>
+                <TextBlock VerticalAlignment="Center" Margin="0,0,5,0" Width="101"><Run Text="N"/><Run Text="umber of F"/><Run Language="pl-pl" Text="iles:"/></TextBlock>
+                <TextBox Name="NumberOfFileTextBox" Width="100"/>
+                <TextBlock Width="123"><Run Language="pl-pl" Text="The smallest file size"/><Run Text=":"/></TextBlock>
+                <TextBox x:Name="FileSizeTextBox" Width="100" RenderTransformOrigin="-1.518,0.754"/>
                 <Button Content="Add Custom File" Click="AddCustomFile" Width="150" Margin="5,0,0,0"/>
             </StackPanel>
         </StackPanel>
@@ -91,7 +93,7 @@
         <DataGrid ItemsSource="{Binding Clients}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10" Grid.Row="1" Grid.Column="1" SelectionChanged="DataGrid_SelectionChanged">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Client ID" Binding="{Binding ClientID}" Width="100"/>
-                <DataGridTextColumn Header="File Size (MB)" Binding="{Binding FileSizeMB, Converter={StaticResource ListToStringConverter}}" Width="auto"/>
+                <DataGridTextColumn Header="File Size (MB)" Binding="{Binding ListOfClientFiles, Converter={StaticResource ListToStringConverter}}" Width="auto"/>
                 <DataGridTextColumn Header="Progress (%)" Binding="{Binding Progress}" Width="100"/>
                 <DataGridTextColumn Header="Priority" Binding="{Binding Priority}" Width="100"/>
             </DataGrid.Columns>
