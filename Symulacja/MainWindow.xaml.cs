@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Threading;
 
 namespace Symulacja
 {
@@ -99,12 +93,11 @@ namespace Symulacja
                     var nextClient = GetNextClientByPriority();
                     if (nextClient != null)
                     {
+                        nextClient.isProcesed = true;
                         var fileInfo = new FileInfo { FileName = $"Client {nextClient.ClientID} - {nextClient.ListOfClientFiles[0]} MB" };
 
-                        // Dodaj plik do folderu
                         await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Add(fileInfo));
 
-                        // Przetwarzanie pliku
                         while (nextClient.Progress < 100 && !token.IsCancellationRequested)
                         {
                             await Task.Delay(100, token);
@@ -112,17 +105,14 @@ namespace Symulacja
                             nextClient.Progress = Math.Min(nextClient.Progress + increment, 100);
                             fileInfo.Progress = Math.Min(fileInfo.Progress + increment, 100);
 
-                            // Aktualizuj postęp klienta w interfejsie
                             await Application.Current.Dispatcher.InvokeAsync(() =>
                             {
                                 nextClient.OnPropertyChanged(nameof(nextClient.Progress));
                             });
                         }
 
-                        // Usuń plik z folderu po przetworzeniu
                         await Application.Current.Dispatcher.InvokeAsync(() => Folders[folderIndex].Remove(fileInfo));
 
-                        // Usuń pierwszy plik z listy FileSizeMB
                         await Application.Current.Dispatcher.InvokeAsync(() =>
                         {
                             if (nextClient.ListOfClientFiles.Count > 0)
@@ -131,11 +121,10 @@ namespace Symulacja
                                 nextClient.OnPropertyChanged(nameof(nextClient.ListOfClientFiles));
                             }
 
-                            // Jeśli klient ma więcej plików, oblicz priorytet i dodaj go z powrotem do kolejki
                             if (nextClient.ListOfClientFiles.Count > 0)
                             {
+                                nextClient.isProcesed = false;
                                 nextClient.Progress = 0;
-                                nextClient.EntryTime = DateTime.Now;
                                 nextClient.Priority = CalculatePriority(nextClient);
                                 processingQueue.Enqueue(nextClient);
                             }
@@ -147,7 +136,7 @@ namespace Symulacja
                     }
                     else
                     {
-                        await Task.Delay(100, token); // Zapobiega intensywnemu pętlowaniu
+                        await Task.Delay(100, token); 
                     }
                 }
                 finally
@@ -164,9 +153,10 @@ namespace Symulacja
             {
                 foreach (var client in Clients)
                 {
-                    client.Priority = CalculatePriority(client);
+                    if(!client.isProcesed)
+                        client.Priority = CalculatePriority(client);
                 }
-                await Task.Delay(500, token); // Update priorities every 500ms
+                await Task.Delay(500, token);
             }
         }
 
@@ -189,12 +179,17 @@ namespace Symulacja
 
         private double CalculatePriority(ClientInfo client)
         {
-            // Priority formula: log(base queue length)(time in queue) + (queue length / file size)
-            int queueLength = Math.Max(processingQueue.Count + 1, 1); // Avoid division by zero
-            double timeInQueue = Math.Max((DateTime.Now - client.EntryTime).TotalSeconds, 1);
-            double logPart = Math.Log(timeInQueue, queueLength);
-            double sizePart = (double)queueLength / client.ListOfClientFiles[0];
-            return logPart + sizePart;
+            if (!client.isProcesed)
+            {
+                // Priority formula: log(base queue length)(time in queue) + (queue length / file size)
+                int queueLength = Math.Max(processingQueue.Count + 1, 1); 
+                double timeInQueue = Math.Max((DateTime.Now - client.EntryTime).TotalSeconds, 1);
+                double logPart = Math.Log(timeInQueue, queueLength);
+                double sizePart = (double)queueLength / client.ListOfClientFiles[0];
+                return logPart + sizePart;
+            }
+
+            return 0;
         }
 
         private int CalculateIncrement(int fileSize)
@@ -210,6 +205,7 @@ namespace Symulacja
 
     public class ClientInfo : INotifyPropertyChanged
     {
+        internal bool isProcesed = false;
         private int _progress;
         private double _priority;
         private ObservableCollection<int> _listOfClientFiles = new();
