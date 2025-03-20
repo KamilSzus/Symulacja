@@ -5,29 +5,99 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Symulacja"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="600" Width="1000">
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition Width="7*"/>
+        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" Grid.Row="0">
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" Grid.Row="0" Grid.ColumnSpan="2">
             <Button Content="Start Simulation" Click="StartSimulation" Width="150" Margin="5"/>
-            <Button Content="Stop Simulation" Click="StopSimulation" Width="150" Margin="5"/>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5">
-                <TextBlock Text="File Size (MB):" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <TextBox Name="FileSizeTextBox" Width="100"/>
+                <TextBlock VerticalAlignment="Center" Margin="0,0,5,0" Width="101"><Run Text="N"/><Run Text="umber of F"/><Run Language="pl-pl" Text="iles:"/></TextBlock>
+                <TextBox Name="NumberOfFileTextBox" Width="100"/>
+                <TextBlock Width="123"><Run Language="pl-pl" Text="The smallest file size"/><Run Text=":"/></TextBlock>
+                <TextBox x:Name="FileSizeTextBox" Width="100" RenderTransformOrigin="-1.518,0.754"/>
                 <Button Content="Add Custom File" Click="AddCustomFile" Width="150" Margin="5,0,0,0"/>
             </StackPanel>
         </StackPanel>
-        <DataGrid ItemsSource="{Binding Clients}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10" Grid.Row="1">
+
+        <Grid Grid.Row="1" Grid.Column="0" Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <!-- Wiersz na nagłówki -->
+                <RowDefinition Height="*"/>
+                <!-- Wiersz na DataGrid -->
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Folder 1 -->
+            <TextBlock Grid.Row="0" Text="Folder 1" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <DataGrid ItemsSource="{Binding Folders[0]}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5" Grid.Row="1">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Folder 2 -->
+            <TextBlock Grid.Row="2" Text="Folder 2" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <DataGrid ItemsSource="{Binding Folders[1]}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5" Grid.Row="3">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Folder 3 -->
+            <TextBlock Grid.Row="4" Text="Folder 3" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <DataGrid ItemsSource="{Binding Folders[2]}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5" Grid.Row="5">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Folder 4 -->
+            <TextBlock Grid.Row="6" Text="Folder 4" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <DataGrid ItemsSource="{Binding Folders[3]}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5" Grid.Row="7">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Folder 5 -->
+            <TextBlock Grid.Row="8" Text="Folder 5" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <DataGrid ItemsSource="{Binding Folders[4]}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5" Grid.Row="9">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+
+
+        <DataGrid ItemsSource="{Binding Clients}" AutoGenerateColumns="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10" Grid.Row="1" Grid.Column="1" SelectionChanged="DataGrid_SelectionChanged">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Client ID" Binding="{Binding ClientID}" Width="100"/>
-                <DataGridTextColumn Header="File Size (MB)" Binding="{Binding FileSizeMB}" Width="150"/>
-                <DataGridTextColumn Header="Entry Time" Binding="{Binding EntryTime}" Width="200"/>
+                <DataGridTextColumn Header="File Size (MB)" Binding="{Binding ListOfClientFiles, Converter={StaticResource ListToStringConverter}}" Width="auto"/>
                 <DataGridTextColumn Header="Progress (%)" Binding="{Binding Progress}" Width="100"/>
                 <DataGridTextColumn Header="Priority" Binding="{Binding Priority}" Width="100"/>
             </DataGrid.Columns>
         </DataGrid>
+
     </Grid>
 </Window>

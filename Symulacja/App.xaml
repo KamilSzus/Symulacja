@@ -4,6 +4,6 @@
              xmlns:local="clr-namespace:Symulacja"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <local:ListToStringConverter x:Key="ListToStringConverter" />
     </Application.Resources>
 </Application>
